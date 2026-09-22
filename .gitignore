@@ -11,3 +11,7 @@ wheels/
 
 # datasets
 lab1/data/PMEmo2019
+lab1/bert_embeddings.pt
+lab1/wav2vec2_embeddings.pt
+
+lab1/temp.py
