@@ -16,6 +16,7 @@ dependencies = [
     "librosa>=0.11.0",
     "matplotlib>=3.11.2",
     "numpy==1.26.4",
+    "optuna>=5.0.0",
     "pandas>=3.0.6",
     "pathlib>=1.0.1",
     "scikit-learn>=1.9.1",
