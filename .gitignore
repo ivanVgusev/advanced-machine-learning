@@ -11,10 +11,10 @@ wheels/
 
 # datasets
 lab1/data/PMEmo2019
-lab1/bert_embeddings.pt
-lab1/wav2vec2_embeddings.pt
-lab1/audio_feature_vectors.pt
-lab1/audio_classifier.joblib
-lab1/text_classifier.joblib
+lab1/embeddings/bert_embeddings.pt
+lab1/embeddings/wav2vec2_embeddings.pt
+lab1/embeddings/audio_feature_vectors.pt
+lab1/models/audio_classifier.joblib
+lab1/models/text_classifier.joblib
 
 lab1/temp.py
