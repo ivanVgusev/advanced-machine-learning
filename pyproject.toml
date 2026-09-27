@@ -1,6 +1,7 @@
 [tool.uv]
 required-environments = [
     "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'darwin' and platform_machine == 'x86_64'",
     "sys_platform == 'linux'",
 ]
 [project]
@@ -11,7 +12,8 @@ readme = "README.md"
 requires-python = ">=3.12, <3.13"
 dependencies = [
     "datasets>=5.0.1",
-    "gradio>=6.28.0",
+    "gradio>=5,<6",
+    "huggingface-hub>=0.33.5,<1",
     "ipywidgets>=8.1.9",
     "joblib>=1.6.0",
     "jupyterlab>=4.6.3",
@@ -19,11 +21,10 @@ dependencies = [
     "matplotlib>=3.11.2",
     "numpy==1.26.4",
     "optuna>=5.0.0",
-    "pandas>=3.0.6",
+    "pandas>=2.2,<3",
     "pathlib>=1.0.1",
     "scikit-learn>=1.9.1",
     "torch==2.2",
-    "torchcodec>=0.16.0",
     "tqdm>=4.70.1",
-    "transformers<5",
+    "transformers>=4.46,<5",
 ]
