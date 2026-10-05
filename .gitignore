@@ -10,8 +10,10 @@ wheels/
 .venv
 
 # datasets
-lab1/data/PMEmo2019
+lab1/data/
 lab1/embeddings/
 lab1/models/
+
+lab2/data/
 
 lab1/temp.py
