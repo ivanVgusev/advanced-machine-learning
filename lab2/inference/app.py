@@ -1,17 +1,27 @@
+import json
+import os
 from pathlib import Path
 
 import gradio as gr
 import librosa
 import numpy as np
 import torch
+from dotenv import load_dotenv
 from torch import nn
 
+load_dotenv()
+
 SR = 16000
-MODEL_PATH = Path(__file__).resolve().parent / "multitask.pt"
 
-FRIENDS_NAMES = ["Phoebe", "Monica", "Ross", "Chandler", "Joey", "Rachel"]
-SENTIMENT_CATEGORIES = ["negative", "neutral", "positive"]
+MODEL_NAME = Path(os.getenv("MODEL_NAME", "multitask.pt"))
+CONFIG_NAME = Path(os.getenv("CONFIG_NAME", "config.json"))
+MODEL_PATH = Path(__file__).resolve().parent / MODEL_NAME
+CONFIG_PATH = Path(__file__).resolve().parent / CONFIG_NAME
 
+with open(CONFIG_PATH, "r") as f:
+    config = json.load(f)
+FRIENDS_NAMES = config["friends_names"]
+SENTIMENT_CATEGORIES = config["setiment_categories"]
 
 class MultiTask(nn.Module):
     def __init__(self, emb_length):

@@ -8,3 +8,4 @@ numpy==1.26.4
     # via advanced-machine-learning
 torch==2.2.2
     # via advanced-machine-learning
+python-dotenv>=1.2.4
