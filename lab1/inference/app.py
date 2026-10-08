@@ -1,7 +1,10 @@
+import os
 import re
+
 import gradio as gr
 import librosa
 import torch
+from dotenv import load_dotenv
 from torch import nn
 from transformers import (
     BertModel,
@@ -10,7 +13,15 @@ from transformers import (
     Wav2Vec2Model,
 )
 
-SR = 16000
+load_dotenv()
+
+SR = int(os.getenv("SR", "16000"))
+N_GENRES = int(os.getenv("N_GENRES", "6"))
+MODEL_PATH = os.getenv("MODEL_PATH")
+
+if MODEL_PATH is None:
+    raise ValueError("Добавить путь к модели")
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 # device = "cpu"
 
@@ -88,9 +99,9 @@ class IntermediateFusion(nn.Module):
 
         return logits
 
-model = IntermediateFusion(6, 768, 768)
+model = IntermediateFusion(N_GENRES, 768, 768)
 state_dict = torch.load(
-    "intermediate_fusion.pt",
+    MODEL_PATH,
     map_location="cpu",
     weights_only=True,
 )
