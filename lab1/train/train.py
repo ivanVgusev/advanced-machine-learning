@@ -18,27 +18,32 @@ from transformers import (
     Wav2Vec2Model,
 )
 
+# Основные настройки обучения и воспроизводимости
 SR = 16_000
 RANDOM_STATE = 42
 TEST_SIZE = 0.2
 EPOCHS = 150
 LEARNING_RATE = 1e-4
 
+# Пути к аудио, текстам песен и жанровой разметке
 AUDIO_CORPUS_PATH = Path("data/PMEmo2019/chorus")
 LYRICS_CORPUS_PATH = Path("data/PMEmo2019/lyrics")
 ANNOTATIONS_PATH = Path("data/PMEmo2019/genre_annotations/genre_annotations.csv")
 
+# Готовые модели для представления аудио и текста в виде векторов
 WAV2VEC2_MODEL_NAME = "facebook/wav2vec2-base-960h"
 BERT_MODEL_NAME = "bert-base-uncased"
 
 
 def get_device():
+    # Используем видеокарту, если PyTorch ее видит
     if torch.cuda.is_available():
         return torch.device("cuda")
     return torch.device("cpu")
 
 
 def set_seed(seed):
+    # Фиксируем случайность, чтобы результаты можно было повторить
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -48,6 +53,7 @@ def set_seed(seed):
 
 def read_lrc(text_path):
     def lrc_preprocess(line):
+        # Убираем временные метки и пустые края строки
         line = line.strip()
         return re.sub(r"\[.+?\]", "", line).strip()
 
@@ -59,6 +65,7 @@ def read_lrc(text_path):
 
 
 def load_dataset_paths():
+    # Сначала проверяем, что разметка существует и имеет нужный формат
     if not ANNOTATIONS_PATH.exists():
         raise FileNotFoundError(
             f"Не найден файл с жанрами: {ANNOTATIONS_PATH}."
@@ -74,6 +81,7 @@ def load_dataset_paths():
     annotations_df = annotations_df.set_index("musicId")
     samples = []
 
+    # Собираем только полные тройки: аудио, текст и жанр
     for audio_path in sorted(AUDIO_CORPUS_PATH.glob("*.mp3"), key=lambda path: int(path.stem)):
         music_id = int(audio_path.stem)
         text_path = LYRICS_CORPUS_PATH / f"{music_id}.lrc"
@@ -94,6 +102,7 @@ def load_dataset_paths():
 
 
 def extract_audio_embeddings(audio_paths, device):
+    # Загружаем Wav2Vec2 один раз для всей коллекции аудио
     feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
         WAV2VEC2_MODEL_NAME
     )
@@ -102,6 +111,7 @@ def extract_audio_embeddings(audio_paths, device):
 
     embeddings = []
     for audio_path in tqdm(audio_paths, desc="Wav2Vec2 embeddings"):
+        # Берем первые 30 секунд и приводим аудио к нужной частоте
         audio, _ = librosa.load(audio_path, sr=SR, duration=30)
         inputs = feature_extractor(
             audio,
@@ -113,8 +123,10 @@ def extract_audio_embeddings(audio_paths, device):
         with torch.inference_mode():
             features = model(**inputs).last_hidden_state
 
+        # Усредняем признаки по времени до одного вектора на трек
         embeddings.append(features.mean(dim=1).squeeze(0).cpu())
 
+    # Освобождаем память перед загрузкой следующей большой модели
     del model
     if device.type == "cuda":
         torch.cuda.empty_cache()
@@ -123,6 +135,7 @@ def extract_audio_embeddings(audio_paths, device):
 
 
 def extract_text_embeddings(text_paths, device):
+    # Загружаем BERT и обрабатываем текст построчно
     tokenizer = BertTokenizer.from_pretrained(BERT_MODEL_NAME)
     model = BertModel.from_pretrained(BERT_MODEL_NAME).to(device)
     model.eval()
@@ -141,6 +154,7 @@ def extract_text_embeddings(text_paths, device):
         with torch.inference_mode():
             features = model(**inputs).last_hidden_state
 
+        # Получаем один общий вектор для всех строк песни
         embeddings.append(features.mean(dim=0).mean(dim=0).cpu())
 
     del model
@@ -154,9 +168,11 @@ class IntermediateFusion(nn.Module):
     def __init__(self, n_genres, audio_dim, text_dim):
         super().__init__()
 
+        # Приводим аудио и текст к одинаковой размерности
         self.audio_proj = nn.Linear(audio_dim, 256)
         self.text_proj = nn.Linear(text_dim, 256)
 
+        # Трансформер учится учитывать обе модальности вместе
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=256,
             nhead=8,
@@ -164,6 +180,7 @@ class IntermediateFusion(nn.Module):
         )
         self.fusion = nn.TransformerEncoder(encoder_layer, num_layers=2)
 
+        # По объединенному вектору предсказываем жанр
         self.classifier = nn.Sequential(
             nn.Linear(256, 256),
             nn.GELU(),
@@ -176,12 +193,14 @@ class IntermediateFusion(nn.Module):
     def forward(self, audio_emb, text_emb):
         audio_emb = self.audio_proj(audio_emb)
         text_emb = self.text_proj(text_emb)
+        # Складываем две модальности в короткую последовательность
         fused = torch.stack([audio_emb, text_emb], dim=1)
         fused = self.fusion(fused).mean(dim=1)
         return self.classifier(fused)
 
 
 def main():
+    # Готовим окружение и загружаем список доступных примеров
     set_seed(RANDOM_STATE)
     device = get_device()
     print(f"Device: {device}")
@@ -191,6 +210,7 @@ def main():
     text_paths = [sample[1] for sample in samples]
     annotations = [sample[2] for sample in samples]
 
+    # Назначаем каждому названию жанра числовую метку
     genres = list(OrderedDict.fromkeys(annotations))
     genre_to_num = {genre: index for index, genre in enumerate(genres)}
     labels = torch.tensor(
@@ -204,6 +224,7 @@ def main():
     audio_embeddings = extract_audio_embeddings(audio_paths, device)
     text_embeddings = extract_text_embeddings(text_paths, device)
 
+    # Делим данные с сохранением долей жанров в обеих частях
     audio_train, audio_test, text_train, text_test, y_train, y_test = train_test_split(
         audio_embeddings,
         text_embeddings,
@@ -219,6 +240,7 @@ def main():
     audio_test = audio_test.to(device)
     text_test = text_test.to(device)
 
+    # Создаем модель, функцию ошибки и оптимизатор
     model = IntermediateFusion(
         n_genres=len(genres),
         audio_dim=audio_embeddings.shape[1],
@@ -227,6 +249,7 @@ def main():
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
+    # Обучаем классификатор сразу на всей обучающей выборке
     model.train()
     for _ in tqdm(range(EPOCHS), desc="Training"):
         optimizer.zero_grad()
@@ -235,11 +258,13 @@ def main():
         loss.backward()
         optimizer.step()
 
+    # Получаем предсказания на отложенной выборке без расчета градиентов
     model.eval()
     with torch.inference_mode():
         logits = model(audio_test, text_test)
         predictions = torch.argmax(logits, dim=1)
 
+    # Показываем метрики отдельно для каждого жанра
     print("\nTest classification report:")
     print(
         classification_report(
