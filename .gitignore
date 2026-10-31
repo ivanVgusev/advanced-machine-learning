@@ -10,7 +10,7 @@ wheels/
 .venv
 
 # datasets
-lab1/data/
+lab1/train/data/
 lab1/embeddings/
 lab1/models/
 
@@ -20,3 +20,5 @@ lab1/temp.py
 
 lab1/inference/.env
 lab2/inference/.env
+
+*/README.md
