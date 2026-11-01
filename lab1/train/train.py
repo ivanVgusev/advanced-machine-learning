@@ -2,6 +2,7 @@ import random
 import re
 from collections import OrderedDict
 from pathlib import Path
+from string import Template
 
 import librosa
 import numpy as np
@@ -18,7 +19,6 @@ from transformers import (
     Wav2Vec2Model,
 )
 
-# Основные настройки обучения и воспроизводимости
 SR = 16_000
 RANDOM_STATE = 42
 TEST_SIZE = 0.2
@@ -29,21 +29,23 @@ LEARNING_RATE = 1e-4
 AUDIO_CORPUS_PATH = Path("data/PMEmo2019/chorus")
 LYRICS_CORPUS_PATH = Path("data/PMEmo2019/lyrics")
 ANNOTATIONS_PATH = Path("data/PMEmo2019/genre_annotations/genre_annotations.csv")
+REPORT_PATH = Path("report.md")
+REPORT_TEMPLATE_PATH = Path("lab1_report_template.md")
+if not REPORT_TEMPLATE_PATH.exists():
+    raise FileNotFoundError("Не найден файл с темплейтом отчета")
 
-# Готовые модели для представления аудио и текста в виде векторов
 WAV2VEC2_MODEL_NAME = "facebook/wav2vec2-base-960h"
 BERT_MODEL_NAME = "bert-base-uncased"
 
 
 def get_device():
-    # Используем видеокарту, если PyTorch ее видит
     if torch.cuda.is_available():
         return torch.device("cuda")
     return torch.device("cpu")
 
 
 def set_seed(seed):
-    # Фиксируем случайность, чтобы результаты можно было повторить
+    # Фиксируем сиды
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -111,8 +113,7 @@ def extract_audio_embeddings(audio_paths, device):
 
     embeddings = []
     for audio_path in tqdm(audio_paths, desc="Wav2Vec2 embeddings"):
-        # Берем первые 30 секунд и приводим аудио к нужной частоте
-        audio, _ = librosa.load(audio_path, sr=SR, duration=30)
+        audio, _ = librosa.load(audio_path, sr=SR)
         inputs = feature_extractor(
             audio,
             sampling_rate=SR,
@@ -164,6 +165,11 @@ def extract_text_embeddings(text_paths, device):
     return torch.stack(embeddings)
 
 
+def make_report(sub_dict: dict) -> None:
+    report_template = Template(REPORT_PATH.read_text())
+    report_template.substitute(*sub_dict)
+
+
 class IntermediateFusion(nn.Module):
     def __init__(self, n_genres, audio_dim, text_dim):
         super().__init__()
@@ -200,7 +206,7 @@ class IntermediateFusion(nn.Module):
 
 
 def main():
-    # Готовим окружение и загружаем список доступных примеров
+    # Готовим окружение
     set_seed(RANDOM_STATE)
     device = get_device()
     print(f"Device: {device}")
@@ -224,7 +230,7 @@ def main():
     audio_embeddings = extract_audio_embeddings(audio_paths, device)
     text_embeddings = extract_text_embeddings(text_paths, device)
 
-    # Делим данные с сохранением долей жанров в обеих частях
+    # Трейн-тест сплит
     audio_train, audio_test, text_train, text_test, y_train, y_test = train_test_split(
         audio_embeddings,
         text_embeddings,
@@ -249,7 +255,7 @@ def main():
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-    # Обучаем классификатор сразу на всей обучающей выборке
+    # Обучаем классификатор
     model.train()
     for _ in tqdm(range(EPOCHS), desc="Training"):
         optimizer.zero_grad()
@@ -258,23 +264,30 @@ def main():
         loss.backward()
         optimizer.step()
 
-    # Получаем предсказания на отложенной выборке без расчета градиентов
+    # Получаем предсказания без расчета градиентов
     model.eval()
     with torch.inference_mode():
         logits = model(audio_test, text_test)
         predictions = torch.argmax(logits, dim=1)
 
-    # Показываем метрики отдельно для каждого жанра
-    print("\nTest classification report:")
-    print(
-        classification_report(
+    results = classification_report(
             y_test.cpu().numpy(),
             predictions.cpu().numpy(),
             labels=list(range(len(genres))),
             target_names=genres,
             zero_division=0,
         )
-    )
+
+    report_dict = {
+        "samples_count": len(labels),
+        "genres": set(annotations),
+        "optimizer": optimizer,
+        "lr": LEARNING_RATE,
+        "loss_function": criterion,
+        "device": device,
+        "classification_report": results
+    }
+    make_report(report_dict)
 
 
 if __name__ == "__main__":
