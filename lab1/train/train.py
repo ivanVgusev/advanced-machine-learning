@@ -29,7 +29,9 @@ LEARNING_RATE = 1e-4
 AUDIO_CORPUS_PATH = Path("data/PMEmo2019/chorus")
 LYRICS_CORPUS_PATH = Path("data/PMEmo2019/lyrics")
 ANNOTATIONS_PATH = Path("data/PMEmo2019/genre_annotations/genre_annotations.csv")
-REPORT_PATH = Path("report.md")
+AUDIO_EMBEDDINGS_PATH = Path("data/embeddings/wav2vec2.pt")
+TEXT_EMBEDDINGS_PATH = Path("data/embeddings/bert.pt")
+REPORT_PATH = Path("outputs/report.md")
 REPORT_TEMPLATE_PATH = Path("lab1_report_template.md")
 if not REPORT_TEMPLATE_PATH.exists():
     raise FileNotFoundError("Не найден файл с темплейтом отчета")
@@ -127,7 +129,6 @@ def extract_audio_embeddings(audio_paths, device):
         # Усредняем признаки по времени до одного вектора на трек
         embeddings.append(features.mean(dim=1).squeeze(0).cpu())
 
-    # Освобождаем память перед загрузкой следующей большой модели
     del model
     if device.type == "cuda":
         torch.cuda.empty_cache()
@@ -165,9 +166,27 @@ def extract_text_embeddings(text_paths, device):
     return torch.stack(embeddings)
 
 
+def load_embeddings(paths, embeddings_path, extract_embeddings, device):
+    if embeddings_path.exists():
+        embeddings = torch.load(
+            embeddings_path,
+            map_location="cpu",
+            weights_only=True,
+        )
+        if len(embeddings) == len(paths):
+            return embeddings
+
+    # Кеш нужен, чтобы не извлекать признаки при каждом запуске
+    embeddings = extract_embeddings(paths, device)
+    embeddings_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(embeddings, embeddings_path)
+    return embeddings
+
+
 def make_report(sub_dict: dict) -> None:
-    report_template = Template(REPORT_PATH.read_text())
-    report_template.substitute(*sub_dict)
+    report_template = Template(REPORT_TEMPLATE_PATH.read_text())
+    report = report_template.safe_substitute(sub_dict)
+    REPORT_PATH.write_text(str(report))
 
 
 class IntermediateFusion(nn.Module):
@@ -206,78 +225,94 @@ class IntermediateFusion(nn.Module):
 
 
 def main():
-    # Готовим окружение
-    set_seed(RANDOM_STATE)
-    device = get_device()
-    print(f"Device: {device}")
+    # # Готовим окружение
+    # set_seed(RANDOM_STATE)
+    # device = get_device()
+    # print(f"Device: {device}")
 
-    samples = load_dataset_paths()
-    audio_paths = [sample[0] for sample in samples]
-    text_paths = [sample[1] for sample in samples]
-    annotations = [sample[2] for sample in samples]
+    # samples = load_dataset_paths()
+    # audio_paths = [sample[0] for sample in samples]
+    # text_paths = [sample[1] for sample in samples]
+    # annotations = [sample[2] for sample in samples]
 
-    # Назначаем каждому названию жанра числовую метку
-    genres = list(OrderedDict.fromkeys(annotations))
-    genre_to_num = {genre: index for index, genre in enumerate(genres)}
-    labels = torch.tensor(
-        [genre_to_num[genre] for genre in annotations],
-        dtype=torch.long,
-    )
+    # # Назначаем каждому названию жанра числовую метку
+    # genres = list(OrderedDict.fromkeys(annotations))
+    # genre_to_num = {genre: index for index, genre in enumerate(genres)}
+    # labels = torch.tensor(
+    #     [genre_to_num[genre] for genre in annotations],
+    #     dtype=torch.long,
+    # )
 
-    print(f"Samples: {len(samples)}")
-    print(f"Genres: {genres}")
+    # print(f"Samples: {len(samples)}")
+    # print(f"Genres: {genres}")
 
-    audio_embeddings = extract_audio_embeddings(audio_paths, device)
-    text_embeddings = extract_text_embeddings(text_paths, device)
+    # audio_embeddings = load_embeddings(
+    #     audio_paths,
+    #     AUDIO_EMBEDDINGS_PATH,
+    #     extract_audio_embeddings,
+    #     device,
+    # )
+    # text_embeddings = load_embeddings(
+    #     text_paths,
+    #     TEXT_EMBEDDINGS_PATH,
+    #     extract_text_embeddings,
+    #     device,
+    # )
 
-    # Трейн-тест сплит
-    audio_train, audio_test, text_train, text_test, y_train, y_test = train_test_split(
-        audio_embeddings,
-        text_embeddings,
-        labels,
-        test_size=TEST_SIZE,
-        random_state=RANDOM_STATE,
-        stratify=labels,
-    )
+    # # Трейн-тест сплит
+    # audio_train, audio_test, text_train, text_test, y_train, y_test = train_test_split(
+    #     audio_embeddings,
+    #     text_embeddings,
+    #     labels,
+    #     test_size=TEST_SIZE,
+    #     random_state=RANDOM_STATE,
+    #     stratify=labels,
+    # )
 
-    audio_train = audio_train.to(device)
-    text_train = text_train.to(device)
-    y_train = y_train.to(device)
-    audio_test = audio_test.to(device)
-    text_test = text_test.to(device)
+    # audio_train = audio_train.to(device)
+    # text_train = text_train.to(device)
+    # y_train = y_train.to(device)
+    # audio_test = audio_test.to(device)
+    # text_test = text_test.to(device)
 
-    # Создаем модель, функцию ошибки и оптимизатор
-    model = IntermediateFusion(
-        n_genres=len(genres),
-        audio_dim=audio_embeddings.shape[1],
-        text_dim=text_embeddings.shape[1],
-    ).to(device)
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    # # Создаем модель, функцию ошибки и оптимизатор
+    # model = IntermediateFusion(
+    #     n_genres=len(genres),
+    #     audio_dim=audio_embeddings.shape[1],
+    #     text_dim=text_embeddings.shape[1],
+    # ).to(device)
+    # criterion = nn.CrossEntropyLoss()
+    # optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-    # Обучаем классификатор
-    model.train()
-    for _ in tqdm(range(EPOCHS), desc="Training"):
-        optimizer.zero_grad()
-        logits = model(audio_train, text_train)
-        loss = criterion(logits, y_train)
-        loss.backward()
-        optimizer.step()
+    # # Обучаем классификатор
+    # model.train()
+    # for _ in tqdm(range(EPOCHS), desc="Training"):
+    #     optimizer.zero_grad()
+    #     logits = model(audio_train, text_train)
+    #     loss = criterion(logits, y_train)
+    #     loss.backward()
+    #     optimizer.step()
 
-    # Получаем предсказания без расчета градиентов
-    model.eval()
-    with torch.inference_mode():
-        logits = model(audio_test, text_test)
-        predictions = torch.argmax(logits, dim=1)
+    # # Получаем предсказания без расчета градиентов
+    # model.eval()
+    # with torch.inference_mode():
+    #     logits = model(audio_test, text_test)
+    #     predictions = torch.argmax(logits, dim=1)
 
-    results = classification_report(
-            y_test.cpu().numpy(),
-            predictions.cpu().numpy(),
-            labels=list(range(len(genres))),
-            target_names=genres,
-            zero_division=0,
-        )
+    # results = classification_report(
+    #         y_test.cpu().numpy(),
+    #         predictions.cpu().numpy(),
+    #         labels=list(range(len(genres))),
+    #         target_names=genres,
+    #         zero_division=0,
+    #     )
 
+    labels = [4, 4, 4, 4]
+    annotations = [4, 4, 4, 4]
+    optimizer = 4
+    criterion = 4
+    device = 4
+    results = 4
     report_dict = {
         "samples_count": len(labels),
         "genres": set(annotations),

@@ -1,0 +1,5 @@
+services:
+  train:
+    build: .
+    volumes:
+      - ./outputs:/app/outputs

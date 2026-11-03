@@ -1,2 +1,3 @@
 model,train_entrypath,inference_entrypath
 lab1,../lab1/train/docker-compose.yaml,../lab1/inference/docker-compose.yaml
+lab2,../lab2/train/docker-compose.yaml,../lab2/inference/docker-compose.yaml

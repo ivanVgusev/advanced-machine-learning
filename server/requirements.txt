@@ -1,0 +1,2 @@
+pandas>=2.2,<3
+fastapi[standard]>=0.141.1
