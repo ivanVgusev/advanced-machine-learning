@@ -225,104 +225,98 @@ class IntermediateFusion(nn.Module):
 
 
 def main():
-    # # Готовим окружение
-    # set_seed(RANDOM_STATE)
-    # device = get_device()
-    # print(f"Device: {device}")
+    # Готовим окружение
+    set_seed(RANDOM_STATE)
+    device = get_device()
+    print(f"Device: {device}")
 
-    # samples = load_dataset_paths()
-    # audio_paths = [sample[0] for sample in samples]
-    # text_paths = [sample[1] for sample in samples]
-    # annotations = [sample[2] for sample in samples]
+    samples = load_dataset_paths()
+    audio_paths = [sample[0] for sample in samples]
+    text_paths = [sample[1] for sample in samples]
+    annotations = [sample[2] for sample in samples]
 
-    # # Назначаем каждому названию жанра числовую метку
-    # genres = list(OrderedDict.fromkeys(annotations))
-    # genre_to_num = {genre: index for index, genre in enumerate(genres)}
-    # labels = torch.tensor(
-    #     [genre_to_num[genre] for genre in annotations],
-    #     dtype=torch.long,
-    # )
+    # Назначаем каждому названию жанра числовую метку
+    genres = list(OrderedDict.fromkeys(annotations))
+    genre_to_num = {genre: index for index, genre in enumerate(genres)}
+    labels = torch.tensor(
+        [genre_to_num[genre] for genre in annotations],
+        dtype=torch.long,
+    )
 
-    # print(f"Samples: {len(samples)}")
-    # print(f"Genres: {genres}")
+    print(f"Samples: {len(samples)}")
+    print(f"Genres: {genres}")
 
-    # audio_embeddings = load_embeddings(
-    #     audio_paths,
-    #     AUDIO_EMBEDDINGS_PATH,
-    #     extract_audio_embeddings,
-    #     device,
-    # )
-    # text_embeddings = load_embeddings(
-    #     text_paths,
-    #     TEXT_EMBEDDINGS_PATH,
-    #     extract_text_embeddings,
-    #     device,
-    # )
+    audio_embeddings = load_embeddings(
+        audio_paths,
+        AUDIO_EMBEDDINGS_PATH,
+        extract_audio_embeddings,
+        device,
+    )
+    text_embeddings = load_embeddings(
+        text_paths,
+        TEXT_EMBEDDINGS_PATH,
+        extract_text_embeddings,
+        device,
+    )
 
-    # # Трейн-тест сплит
-    # audio_train, audio_test, text_train, text_test, y_train, y_test = train_test_split(
-    #     audio_embeddings,
-    #     text_embeddings,
-    #     labels,
-    #     test_size=TEST_SIZE,
-    #     random_state=RANDOM_STATE,
-    #     stratify=labels,
-    # )
+    # Трейн-тест сплит
+    audio_train, audio_test, text_train, text_test, y_train, y_test = train_test_split(
+        audio_embeddings,
+        text_embeddings,
+        labels,
+        test_size=TEST_SIZE,
+        random_state=RANDOM_STATE,
+        stratify=labels,
+    )
 
-    # audio_train = audio_train.to(device)
-    # text_train = text_train.to(device)
-    # y_train = y_train.to(device)
-    # audio_test = audio_test.to(device)
-    # text_test = text_test.to(device)
+    audio_train = audio_train.to(device)
+    text_train = text_train.to(device)
+    y_train = y_train.to(device)
+    audio_test = audio_test.to(device)
+    text_test = text_test.to(device)
 
-    # # Создаем модель, функцию ошибки и оптимизатор
-    # model = IntermediateFusion(
-    #     n_genres=len(genres),
-    #     audio_dim=audio_embeddings.shape[1],
-    #     text_dim=text_embeddings.shape[1],
-    # ).to(device)
-    # criterion = nn.CrossEntropyLoss()
-    # optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    # Создаем модель, функцию ошибки и оптимизатор
+    model = IntermediateFusion(
+        n_genres=len(genres),
+        audio_dim=audio_embeddings.shape[1],
+        text_dim=text_embeddings.shape[1],
+    ).to(device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-    # # Обучаем классификатор
-    # model.train()
-    # for _ in tqdm(range(EPOCHS), desc="Training"):
-    #     optimizer.zero_grad()
-    #     logits = model(audio_train, text_train)
-    #     loss = criterion(logits, y_train)
-    #     loss.backward()
-    #     optimizer.step()
+    # Обучаем классификатор
+    model.train()
+    for _ in tqdm(range(EPOCHS), desc="Training"):
+        optimizer.zero_grad()
+        logits = model(audio_train, text_train)
+        loss = criterion(logits, y_train)
+        loss.backward()
+        optimizer.step()
 
-    # # Получаем предсказания без расчета градиентов
-    # model.eval()
-    # with torch.inference_mode():
-    #     logits = model(audio_test, text_test)
-    #     predictions = torch.argmax(logits, dim=1)
+    # Получаем предсказания без расчета градиентов
+    model.eval()
+    with torch.inference_mode():
+        logits = model(audio_test, text_test)
+        predictions = torch.argmax(logits, dim=1)
 
-    # results = classification_report(
-    #         y_test.cpu().numpy(),
-    #         predictions.cpu().numpy(),
-    #         labels=list(range(len(genres))),
-    #         target_names=genres,
-    #         zero_division=0,
-    #     )
+    results = classification_report(
+        y_test.cpu().numpy(),
+        predictions.cpu().numpy(),
+        labels=list(range(len(genres))),
+        target_names=genres,
+        zero_division=0,
+    )
 
-    labels = [4, 4, 4, 4]
-    annotations = [4, 4, 4, 4]
-    optimizer = 4
-    criterion = 4
-    device = 4
-    results = 4
-    report_dict = {
-        "samples_count": len(labels),
-        "genres": set(annotations),
-        "optimizer": optimizer,
+    report_values = {
+        "samples_count": len(samples),
+        "genres": ", ".join(genres),
+        "optimizer": "Adam",
         "lr": LEARNING_RATE,
-        "loss_function": criterion,
+        "loss_function": "CrossEntropyLoss",
         "device": device,
-        "classification_report": results
+        "classification_report": results,
     }
-    make_report(report_dict)
+    make_report(report_values)
 
 
 if __name__ == "__main__":
