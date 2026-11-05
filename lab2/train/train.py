@@ -1,4 +1,5 @@
 import random
+from collections.abc import Mapping
 from pathlib import Path
 from string import Template
 
@@ -28,13 +29,13 @@ REPORT_TEMPLATE_PATH = Path("lab2_report_template.md")
 FRIENDS_NAMES = ["Phoebe", "Monica", "Ross", "Chandler", "Joey", "Rachel"]
 
 
-def get_device():
+def get_device() -> torch.device:
     if torch.cuda.is_available():
         return torch.device("cuda")
     return torch.device("cpu")
 
 
-def set_seed(seed):
+def set_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -42,7 +43,7 @@ def set_seed(seed):
         torch.cuda.manual_seed_all(seed)
 
 
-def load_metadata():
+def load_metadata() -> pd.DataFrame:
     if not METADATA_PATH.exists():
         raise FileNotFoundError(f"Не найден файл с разметкой: {METADATA_PATH}")
 
@@ -70,8 +71,11 @@ def load_metadata():
     return metadata
 
 
-def extract_librosa_features(audio_path, chunk_audio=True):
-    def get_features(audio):
+def extract_librosa_features(
+    audio_path: Path,
+    chunk_audio: bool = True,
+) -> torch.Tensor:
+    def get_features(audio: np.ndarray) -> torch.Tensor:
         mfcc = librosa.feature.mfcc(y=audio, sr=SR, n_mfcc=40)
         chroma = librosa.feature.chroma_stft(y=audio, sr=SR)
         spectral_centroid = librosa.feature.spectral_centroid(y=audio, sr=SR)
@@ -112,7 +116,7 @@ def extract_librosa_features(audio_path, chunk_audio=True):
     return torch.stack(features).mean(dim=0)
 
 
-def load_embeddings(metadata):
+def load_embeddings(metadata: pd.DataFrame) -> torch.Tensor:
     if EMBEDDINGS_PATH.exists():
         embeddings = torch.load(
             EMBEDDINGS_PATH,
@@ -134,7 +138,7 @@ def load_embeddings(metadata):
 
 
 class MultiTask(nn.Module):
-    def __init__(self, embedding_length, sentiment_count):
+    def __init__(self, embedding_length: int, sentiment_count: int) -> None:
         super().__init__()
         self.encoder = nn.Sequential(
             nn.Linear(embedding_length, 256),
@@ -143,18 +147,21 @@ class MultiTask(nn.Module):
         self.speaker_head = nn.Linear(256, len(FRIENDS_NAMES))
         self.sentiment_head = nn.Linear(256, sentiment_count)
 
-    def forward(self, embeddings):
+    def forward(
+        self,
+        embeddings: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         features = self.encoder(embeddings)
         return self.speaker_head(features), self.sentiment_head(features)
 
 
-def make_report(values):
+def make_report(values: Mapping[str, object]) -> None:
     template = Template(REPORT_TEMPLATE_PATH.read_text(encoding="utf-8"))
     report = template.substitute(values)
     REPORT_PATH.write_text(report, encoding="utf-8")
 
 
-def main():
+def main() -> None:
     set_seed(RANDOM_STATE)
     device = get_device()
     metadata = load_metadata()

@@ -1,6 +1,7 @@
 import random
 import re
 from collections import OrderedDict
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from string import Template
 
@@ -40,13 +41,13 @@ WAV2VEC2_MODEL_NAME = "facebook/wav2vec2-base-960h"
 BERT_MODEL_NAME = "bert-base-uncased"
 
 
-def get_device():
+def get_device() -> torch.device:
     if torch.cuda.is_available():
         return torch.device("cuda")
     return torch.device("cpu")
 
 
-def set_seed(seed):
+def set_seed(seed: int) -> None:
     # Фиксируем сиды
     random.seed(seed)
     np.random.seed(seed)
@@ -55,8 +56,8 @@ def set_seed(seed):
         torch.cuda.manual_seed_all(seed)
 
 
-def read_lrc(text_path):
-    def lrc_preprocess(line):
+def read_lrc(text_path: Path) -> list[str]:
+    def lrc_preprocess(line: str) -> str:
         # Убираем временные метки и пустые края строки
         line = line.strip()
         return re.sub(r"\[.+?\]", "", line).strip()
@@ -68,7 +69,7 @@ def read_lrc(text_path):
     return lines or [""]
 
 
-def load_dataset_paths():
+def load_dataset_paths() -> list[tuple[Path, Path, str]]:
     # Сначала проверяем, что разметка существует и имеет нужный формат
     if not ANNOTATIONS_PATH.exists():
         raise FileNotFoundError(
@@ -105,7 +106,10 @@ def load_dataset_paths():
     return samples
 
 
-def extract_audio_embeddings(audio_paths, device):
+def extract_audio_embeddings(
+    audio_paths: Sequence[Path],
+    device: torch.device,
+) -> torch.Tensor:
     # Загружаем Wav2Vec2 один раз для всей коллекции аудио
     feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
         WAV2VEC2_MODEL_NAME
@@ -136,7 +140,10 @@ def extract_audio_embeddings(audio_paths, device):
     return torch.stack(embeddings)
 
 
-def extract_text_embeddings(text_paths, device):
+def extract_text_embeddings(
+    text_paths: Sequence[Path],
+    device: torch.device,
+) -> torch.Tensor:
     # Загружаем BERT и обрабатываем текст построчно
     tokenizer = BertTokenizer.from_pretrained(BERT_MODEL_NAME)
     model = BertModel.from_pretrained(BERT_MODEL_NAME).to(device)
@@ -166,7 +173,15 @@ def extract_text_embeddings(text_paths, device):
     return torch.stack(embeddings)
 
 
-def load_embeddings(paths, embeddings_path, extract_embeddings, device):
+def load_embeddings(
+    paths: Sequence[Path],
+    embeddings_path: Path,
+    extract_embeddings: Callable[
+        [Sequence[Path], torch.device],
+        torch.Tensor,
+    ],
+    device: torch.device,
+) -> torch.Tensor:
     if embeddings_path.exists():
         embeddings = torch.load(
             embeddings_path,
@@ -183,14 +198,14 @@ def load_embeddings(paths, embeddings_path, extract_embeddings, device):
     return embeddings
 
 
-def make_report(sub_dict: dict) -> None:
+def make_report(sub_dict: Mapping[str, object]) -> None:
     report_template = Template(REPORT_TEMPLATE_PATH.read_text())
     report = report_template.safe_substitute(sub_dict)
     REPORT_PATH.write_text(str(report))
 
 
 class IntermediateFusion(nn.Module):
-    def __init__(self, n_genres, audio_dim, text_dim):
+    def __init__(self, n_genres: int, audio_dim: int, text_dim: int) -> None:
         super().__init__()
 
         # Приводим аудио и текст к одинаковой размерности
@@ -215,7 +230,11 @@ class IntermediateFusion(nn.Module):
             nn.Linear(128, n_genres),
         )
 
-    def forward(self, audio_emb, text_emb):
+    def forward(
+        self,
+        audio_emb: torch.Tensor,
+        text_emb: torch.Tensor,
+    ) -> torch.Tensor:
         audio_emb = self.audio_proj(audio_emb)
         text_emb = self.text_proj(text_emb)
         # Складываем две модальности в короткую последовательность
@@ -224,7 +243,7 @@ class IntermediateFusion(nn.Module):
         return self.classifier(fused)
 
 
-def main():
+def main() -> None:
     # Готовим окружение
     set_seed(RANDOM_STATE)
     device = get_device()
